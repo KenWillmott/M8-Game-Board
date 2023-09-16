@@ -11,3 +11,6 @@ The joystick inputs are just a pair of 4 filtered digital inputs to a latch, wit
 The serial interface is an MC6850 or equivalent part. It's a UART but Motorola called it an "ACIA". There are now small USB Host to Serial cards available, it would allow the input from a keyboard and maybe mouse.
 
 One board has been built and tested. Evaluation is on going.
+
+See the wiki for more details:
+https://github.com/KenWillmott/M8-Game-Board/wiki
