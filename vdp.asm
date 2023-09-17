@@ -125,7 +125,7 @@ nexp4:		ldab	0,x
 		bne	nexp4
 
 		ldd	#0x4000+0x1C00
-		jsr	wrctrl	;set up for writes starting at 0x3C00
+		jsr	wrctrl	;set up for writes starting at 0x1C00
 
 		ldx	#s0attr	; sprite defs table
 nexp5:		ldab	0,x
