@@ -3,6 +3,7 @@
 ; kw
 ; 2023-05-31
 ; 2023-09-11	convert to asx format
+; 2023-09-17	demo G2 mode with one static sprite
 
 ; current EVB expansion bus address:
 
@@ -32,41 +33,40 @@ lsprit		.equ	208	;last sprite marker
 ; put config register init values address into registers
 
 		ldx	#gmode2
-		ldab	#0x80		;TMS9918 table address format
+		ldaa	#0x80		;TMS9918 table address format
 
 ; do begin
 ; transfer a byte
 
-next:		ldaa	,x		;A = byte
-		bsr	wrctrl		;B = control register
+next:		ldab	,x		;B = byte
+		jsr	wrctrl		;A = control register
 		inx			;next config byte
-		incb		
-		cmpb	#0x88
+		inca
+		cmpa	#0x88
 		bne next
 ; end
 
 ; fill pattern generator table
 
-		ldaa	#0x00
-		ldab	#0x40
-		bsr	wrctrl	;set up for writes starting at 0x0000
+		ldd	#0x4000
+		jsr	wrctrl	;set up for writes starting at 0x0000
 
 		ldx	#ctable	;point to char table
-		stx	U0	;count = size of table
+		stx	R0	;count = size of table
 
 		ldx	#0
 nexp:
 		pshx
-		ldx	U0
+		ldx	R0
 		ldab	0,x
 		stab	data	;transfer to VRAM
-		bsr	DLY10MS
+		jsr	DLY10MS
 		inx
 		cpx	#ctend
 		bne	nexch
 		ldx	#ctable	;point to char table again
 nexch:
-		stx	U0
+		stx	R0
 		pulx
 
 		inx
@@ -74,74 +74,84 @@ nexch:
 		bne	nexp
 
 ; fill pattern colour table
-		ldaa	#0x00
-		ldab	#0x60
-		bsr	wrctrl	;set up for writes starting at 0x2000
+
+		ldd	#0x4000+0x2000
+		jsr	wrctrl	;set up for writes starting at 0x2000
 
 		ldx	#0x1800		; table size
 nexp2:
-		stx	U1
-		ldab	U1		;get upper byte of counter
+		stx	R1
+		ldab	R1		;get upper byte of counter
 		andb	#0x0F		;mask to 4 bits
 
-		ldaa	U1+1	;get lower order byte
+		ldaa	R1+1	;get lower order byte
 		lsla
 		anda	#0xF0
-		staa	U1+1
+		staa	R1+1
 
-		orab	U1+1
+		orab	R1+1
 		stab	data
-		bsr	DLY10MS
+		jsr	DLY10MS
 		dex
 		bne	nexp2
 
 ; fill pattern name table
 
-		ldaa	#0x00
-		ldab	#0x78
-		bsr	wrctrl	;set up for writes starting at 0x3800
+		ldd	#0x4000+0x3800
+		jsr	wrctrl	;set up for writes starting at 0x3800
 
 		ldab	#0	; will increment
 		ldx	#0x300	; table size
 
 nexp3:		stab	data
-		bsr	DLY10MS
+		jsr	DLY10MS
 		incb
 		dex
 		bne	nexp3
 
+;		rts
+
 ; configure sprites
-		ldaa	#0x00
-		ldab	#0x7B
-		bsr	wrctrl	;set up for writes starting at 0x1800
 
-		ldab	#s0	; make first sprite the only
-		stab	data
+		ldd	#0x4000+0x1800
+		jsr	wrctrl	;set up for writes starting at 0x1800
 
-		ldaa	#0x00
-		ldab	#0x7B
-		bsr	wrctrl	;set up for writes starting at 0x3B00
+		ldx	#s0	; sprite defs table
+nexp4:		ldab	0,x
+		stab	data	;transfer to VRAM
+		jsr	DLY10MS
+		inx
+		cpx	#s0attr
+		bne	nexp4
 
-		ldab	#s0attr	; make first sprite the only
-		stab	data
+		ldd	#0x4000+0x1C00
+		jsr	wrctrl	;set up for writes starting at 0x3C00
+
+		ldx	#s0attr	; sprite defs table
+nexp5:		ldab	0,x
+		stab	data	;transfer to VRAM
+		jsr	DLY10MS
+		inx
+		cpx	#sprend
+		bne	nexp5
 
 ; finished setup, go back to monitor
 
 		rts
 
 ; write the control register
-; in order A,B
+; in order B,A
 
-wrctrl:		staa	ctrl
-		bsr	DLY10MS
-		stab	ctrl
-		bsr	DLY10MS
+wrctrl:		stab	ctrl
+		jsr	DLY10MS
+		staa	ctrl
+		jsr	DLY10MS
 		rts
 
 ; borrowed delay routine
 
-DLY10MS:	PSHX          ;delay ?? at E = 2MHz
-		LDX  #0x0080
+DLY10MS:	PSHX          ;delay ~30uS at E = 3MHz
+		LDX  #16
 DLYLP:		DEX
 		BNE  DLYLP
 		PULX
@@ -149,17 +159,21 @@ DLYLP:		DEX
 
 ; data section
 
-U0:		.rmb	2	; count bytes to fill pattern gen
-U1:		.rmb	2	; temp for x reg sampling
+R0:		.rmb	2	; count bytes to fill pattern gen
+R1:		.rmb	2	; temp for x reg sampling
 
 ;	Custom values
 ;	Graphics Mode 2
 
-;	0000-17FF	Pattern Gen
-;	1800-1FFF	Sprite Generator (Patterns)
-;	2000-37FF	Pattern Colour
+;	Pattern Generator and Pattern Colour blocks must begin
+;	on 8k boundaries. Also, Sprite Generator and Attribute
+;	must be in the same 8k page.
+
+;	0000-17FF	Pattern Gen	6k
+;	1800-1FFF	Sprite Generator (Patterns)	2k
+;	1C00-1FFF	Sprite Attribute	4*32 bytes overlap
+;	2000-37FF	Pattern Colour	6k
 ;	3800-3AFF	Pattern Name
-;	3B00-3B80	Sprite Attribute
 
 gmode2:		.fcb	0x02	;M3=1,ext vid disable
 		.fcb	0xc2	;16K DRAM, Blank=1, G2 mode, SIZ=1, MAG=0
@@ -168,7 +182,7 @@ gmode2:		.fcb	0x02	;M3=1,ext vid disable
 				;!!! LSB's == 1
 		.fcb	0x03	;Pattern Gen 0*0x800 = 0x0000
 				;!!! LSB's == 1
-		.fcb	0x76	;Sprite Attr 0x76*0x80 = 0x3B00
+		.fcb	0x38	;Sprite Attr 0x38*0x80 = 0x1C00
 		.fcb	0x03	;Sprite Pattern Gen 0x03*0x800 = 0x1800
 		.fcb	bkblue
 
@@ -327,11 +341,25 @@ ctable:
 
 ctend:
 
+; sprite definitions
+
 s0:
 		.fdb 0xFF80, 0x8080, 0x8080, 0x8080
+		.fdb 0xFF80, 0x8080, 0x8080, 0x8080
+		.fdb 0xFF80, 0x8080, 0x8080, 0x8080
+		.fdb 0x00FF, 0x00FF, 0x00FF, 0x00FF
+
+; sprite attribute table
+
 s0attr:
-		.fcb 0x40, 0x60, 0x00, 0x03
-		.fcb lsprit
+		.fcb	10	;vert pos
+		.fcb	10	;horz pos
+		.fcb	0	;name
+		.fcb	bkblk	;colour
+
+		.fcb lsprit	; end sprite processing
+
+sprend:
 
 ; end program
 HERE	.equ	.
